@@ -39,7 +39,9 @@ ul{padding-left:18px;margin:6px 0}
     <h2>1. Escanear con la cámara</h2>
     <p class="muted">Apuntar la cámara trasera a la etiqueta. Al leerla, la prenda aparece abajo.</p>
     <button class="btn" id="bCam" onclick="iniciarCamara()">Abrir cámara</button>
+    <button class="btn" id="bSig" onclick="siguiente()" style="display:none">Escanear siguiente prenda</button>
     <button class="btn sec" id="bStop" onclick="detenerCamara()" style="display:none">Detener cámara</button>
+    <p class="muted" id="aviso" style="display:none"></p>
     <div id="lector"></div>
   </div>
   <div id="resultado"></div>
@@ -95,18 +97,40 @@ function iniciarCamara() {
     });
 }
 function detenerCamara() {
+  pausado = false; aviso(''); document.getElementById('bSig').style.display = 'none';
   if (lector) lector.stop().then(function () { document.getElementById('bCam').style.display = 'block'; document.getElementById('bStop').style.display = 'none'; }).catch(function () {});
 }
+var pausado = false, OCULTO_MS = 3000;
+function aviso(t) { var a = document.getElementById('aviso'); a.textContent = t || ''; a.style.display = t ? 'block' : 'none'; }
 function leido(texto, origen) {
+  if (pausado) return;
   var ahora = Date.now();
-  if (texto === ultimo && ahora - ultimoT < 2500) return;
+  // La misma etiqueta solo vuelve a contar cuando sale de la cámara al menos 3 segundos.
+  if (texto === ultimo && ahora - ultimoT < OCULTO_MS) {
+    ultimoT = ahora;
+    aviso('Esta etiqueta ya se leyó. Para leerla otra vez, retirarla de la cámara 3 segundos o escribir el código a mano.');
+    return;
+  }
   ultimo = texto; ultimoT = ahora;
   pitido();
+  if (lector) {
+    try { lector.pause(true); } catch (e) {}
+    pausado = true;
+    document.getElementById('bSig').style.display = 'block';
+  }
+  aviso('');
   buscar(texto, origen);
+}
+function siguiente() {
+  pausado = false;
+  ultimoT = Date.now();
+  document.getElementById('bSig').style.display = 'none';
+  try { lector.resume(); } catch (e) {}
 }
 function buscar(codigo, origen) {
   codigo = String(codigo || '').trim().toUpperCase();
   if (!codigo) return;
+  if (origen === 'manual') aviso('');
   var t0 = Date.now();
   var fin = function (p) {
     var ms = Date.now() - t0;
