@@ -147,7 +147,11 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
         <button class="btn" id="bCam" onclick="iniciarCamara()">Abrir cámara</button>
         <button class="btn" id="bSig" onclick="siguiente()" style="display:none">Escanear siguiente prenda</button>
         <div id="lector"></div>
+        <div class="rapidos" id="zoomBox" style="display:none" aria-label="Acercar la imagen"></div>
+        <p class="muted oculto" id="tipIOS">En iPhone: dejar el celular a unos 20 cm de la etiqueta (muy cerca se ve borroso). Si el código se ve pequeño, tocar 2x o 3x.</p>
         <button class="btn sec" id="bStop" onclick="detenerCamara()" style="display:none">Cerrar cámara</button>
+        <label class="btn sec oculto" id="bFoto">¿No lee? Tomar foto de la etiqueta<input type="file" accept="image/*" capture="environment" style="display:none" onchange="leerFoto(this)"></label>
+        <div id="lectorFoto" style="display:none"></div>
         <div id="avisoScan"></div>
         <label class="f" for="manual">O escribir el código</label>
         <div class="row"><input id="manual" placeholder="SMB-00001" autocomplete="off" autocapitalize="characters" onkeydown="if(event.key==='Enter')agregarManual()"><button class="btn" onclick="agregarManual()">Agregar</button></div>
@@ -435,16 +439,63 @@ function pitido(bien) {
   try { var a = new (window.AudioContext || window.webkitAudioContext)(), o = a.createOscillator(), g = a.createGain(); o.frequency.value = bien === false ? 300 : 1100; o.connect(g); g.connect(a.destination); g.gain.value = 0.15; o.start(); setTimeout(function () { o.stop(); a.close(); }, bien === false ? 300 : 120); } catch (e) {}
   try { if (navigator.vibrate) navigator.vibrate(bien === false ? [80, 60, 80] : 80); } catch (e) {}
 }
+var ES_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+if (ES_IOS) document.addEventListener('DOMContentLoaded', function () { $('bFoto').classList.remove('oculto'); });
 function iniciarCamara() {
   if (!window.Html5Qrcode) return msg('avisoScan', 'No cargó el lector de códigos. Revisar internet y recargar.');
   lector = lector || new Html5Qrcode('lector', { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128], verbose: false, experimentalFeatures: { useBarCodeDetectorIfSupported: true } });
-  lector.start({ facingMode: 'environment' }, { fps: 12, qrbox: function (w, h) { return { width: Math.floor(w * 0.9), height: Math.floor(h * 0.8) }; } },
+  var conf = { fps: ES_IOS ? 10 : 12, qrbox: function (w, h) { return { width: Math.floor(w * 0.9), height: Math.floor(h * 0.8) }; } };
+  // iPhone: más resolución para leer el QR desde más lejos (de cerca la cámara no enfoca)
+  if (ES_IOS) conf.videoConstraints = { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } };
+  lector.start({ facingMode: 'environment' }, conf,
     function (t) { leido(t); }, function () {})
-    .then(function () { pausado = false; $('bCam').style.display = 'none'; $('bStop').style.display = 'block'; msg('avisoScan', ''); })
+    .then(function () { pausado = false; $('bCam').style.display = 'none'; $('bStop').style.display = 'block'; msg('avisoScan', ''); $('tipIOS').classList.toggle('oculto', !ES_IOS); configurarZoom(); })
     .catch(function (e) { msg('avisoScan', 'La cámara no se pudo abrir (' + ((e && (e.name || e.message)) || e) + '). Dar permiso de cámara a esta página o escribir el código.'); });
 }
+function configurarZoom() {
+  var box = $('zoomBox'), caps = {};
+  box.style.display = 'none'; box.innerHTML = '';
+  try { caps = lector.getRunningTrackCapabilities() || {}; } catch (e) { caps = {}; }
+  try { if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) lector.applyVideoConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function () {}); } catch (e) {}
+  if (!caps.zoom || !(caps.zoom.max > 1)) return;
+  var min = caps.zoom.min || 1, ops = [1, 1.5, 2, 3].filter(function (z) { return z >= min && z <= caps.zoom.max; });
+  if (ops.length < 2) return;
+  box.innerHTML = '<span class="muted" style="align-self:center">Acercar:</span>' + ops.map(function (z) { return '<button type="button" data-z="' + z + '" onclick="ponerZoom(' + z + ')">' + z + 'x</button>'; }).join('');
+  box.style.display = 'flex';
+  ponerZoom(ES_IOS && ops.indexOf(2) >= 0 ? 2 : ops[0]);
+}
+function ponerZoom(z) {
+  try { lector.applyVideoConstraints({ advanced: [{ zoom: z }] }).catch(function () {}); } catch (e) {}
+  document.querySelectorAll('#zoomBox button').forEach(function (b) { var on = Number(b.dataset.z) === z; b.style.background = on ? '#000' : '#fff'; b.style.color = on ? '#fff' : '#000'; });
+}
+function achicarFoto(file, max) {
+  return new Promise(function (ok, mal) {
+    var img = new Image(), url = URL.createObjectURL(file);
+    img.onload = function () {
+      var k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      c.toBlob(function (b) { b ? ok(new File([b], 'foto.jpg', { type: 'image/jpeg' })) : mal(); }, 'image/jpeg', 0.92);
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); mal(); };
+    img.src = url;
+  });
+}
+function leerFoto(inp) {
+  var f = inp.files && inp.files[0]; inp.value = '';
+  if (!f || !window.Html5Qrcode) return;
+  msg('avisoScan', 'Leyendo la foto…', 'ok');
+  var tamanos = [1600, 1000, 700], i = 0;
+  (function intentar() {
+    if (i >= tamanos.length) { pitido(false); return msg('avisoScan', 'No se encontró el código en la foto. Tomarla de frente, con buena luz y que el QR se vea nítido.'); }
+    achicarFoto(f, tamanos[i++]).then(function (pf) {
+      var t = new Html5Qrcode('lectorFoto', { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128], verbose: false });
+      return t.scanFile(pf, false).then(function (txt) { try { t.clear(); } catch (e) {} msg('avisoScan', ''); agregar(String(txt).trim().toUpperCase()); });
+    }).catch(intentar);
+  })();
+}
 function detenerCamara() {
-  pausado = false; $('bSig').style.display = 'none';
+  pausado = false; $('bSig').style.display = 'none'; $('zoomBox').style.display = 'none'; $('tipIOS').classList.add('oculto');
   if (lector) {
     var l = lector;
     try { l.stop().then(function () { l.clear(); }).catch(function () {}); } catch (e) {}
