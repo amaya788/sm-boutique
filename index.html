@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prueba de escaneo</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Barlow:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+:root{--ink:#111;--ink2:#555;--rule:#d6d6d6;--ok:#127A5C;--okbg:#E2F1EA;--no:#B8322A;--nobg:#FBE9E7;--bg:#F4F4F2}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Barlow,system-ui,sans-serif}
+.top{background:#000;color:#fff;padding:14px 16px}
+.top b{font:800 22px "Barlow Condensed",sans-serif;letter-spacing:.3px}
+.top div{font-size:13px;opacity:.8}
+.wrap{max-width:560px;margin:0 auto;padding:14px}
+.card{background:#fff;border:1.5px solid var(--rule);padding:14px;margin:12px 0}
+h2{font:800 22px "Barlow Condensed",sans-serif;margin:0 0 6px}
+.btn{display:block;width:100%;border:0;background:#000;color:#fff;font:700 17px Barlow,sans-serif;padding:14px;margin-top:8px;min-height:50px;cursor:pointer}
+.btn.sec{background:#fff;color:#000;border:1.5px solid #000}
+.btn:focus-visible,input:focus-visible{outline:3px solid #2F6FDE;outline-offset:2px}
+#lector{width:100%;margin-top:10px}
+.prod{border:2.5px solid var(--ok);background:var(--okbg);padding:14px;margin-top:12px}
+.prod .n{font:800 24px "Barlow Condensed",sans-serif}
+.prod .p{font:800 40px/1 "Barlow Condensed",sans-serif;margin:4px 0}
+.err{border:2px solid var(--no);background:var(--nobg);color:var(--no);padding:12px;margin-top:12px;font-weight:600}
+.muted{color:var(--ink2);font-size:14px}
+.row{display:flex;gap:8px}
+.row input{flex:1;min-width:0;padding:12px;font-size:17px;border:1.5px solid #000;min-height:50px}
+.row .btn{flex:none;width:auto;margin:0;padding:0 18px}
+ul{padding-left:18px;margin:6px 0}
+.diag li{font-size:14px}
+</style>
+</head>
+<body>
+<div class="top"><b>SM BOUTIQUE · Prueba de escaneo</b><div>Página de prueba: no registra ventas ni modifica inventario</div></div>
+<div class="wrap">
+  <div class="card">
+    <h2>1. Escanear con la cámara</h2>
+    <p class="muted">Apuntar la cámara trasera a la etiqueta. Al leerla, la prenda aparece abajo.</p>
+    <button class="btn" id="bCam" onclick="iniciarCamara()">Abrir cámara</button>
+    <button class="btn sec" id="bStop" onclick="detenerCamara()" style="display:none">Detener cámara</button>
+    <div id="lector"></div>
+  </div>
+  <div id="resultado"></div>
+  <div class="card">
+    <h2>2. Escribir el código a mano</h2>
+    <div class="row"><input id="manual" placeholder="SMB-00001" autocomplete="off"><button class="btn" onclick="buscar(document.getElementById('manual').value,'manual')">Buscar</button></div>
+  </div>
+  <div class="card">
+    <h2>Lecturas</h2>
+    <ul id="hist"><li class="muted">Todavía no hay lecturas.</li></ul>
+  </div>
+  <div class="card diag">
+    <h2>Diagnóstico</h2>
+    <ul id="diag"></ul>
+    <p class="muted">Si algo falla, enviar una captura de esta sección.</p>
+  </div>
+</div>
+<script>
+var lector = null, ultimo = '', ultimoT = 0, hist = [];
+function diag(t) { var li = document.createElement('li'); li.textContent = t; document.getElementById('diag').appendChild(li); }
+function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function pesos(n) { return '$' + Number(n).toLocaleString('es-CO'); }
+function pitido() {
+  try { var a = new (window.AudioContext || window.webkitAudioContext)(), o = a.createOscillator(), g = a.createGain(); o.frequency.value = 1100; o.connect(g); g.connect(a.destination); g.gain.value = 0.15; o.start(); setTimeout(function () { o.stop(); a.close(); }, 120); } catch (e) {}
+  try { if (navigator.vibrate) navigator.vibrate(80); } catch (e) {}
+}
+
+diag('Navegador: ' + navigator.userAgent.replace(/^Mozilla\/5\.0 /, '').slice(0, 90));
+diag('Conexión segura (necesaria para la cámara): ' + (window.isSecureContext ? 'sí' : 'no'));
+diag('API de cámara disponible: ' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? 'sí' : 'no'));
+diag('Lector de códigos cargado: ' + (window.Html5Qrcode ? 'sí' : 'no'));
+var API = 'https://script.google.com/macros/s/AKfycbycmsA87MpCfd5aV1fsyeZBTUpX0oxt2idJ8Kt2p3P9CAVM3b8kLnGpPV0sDIyT3c9r/exec';
+fetch(API + '?accion=ping').then(function (r) { return r.json(); }).then(function (j) { diag('Conexión con la base de datos: ' + (j && j.ok ? 'sí' : 'no')); }).catch(function (e) { diag('Conexión con la base de datos: no (' + e.message + ')'); });
+
+function formatos() {
+  return [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128];
+}
+
+function iniciarCamara() {
+  if (!window.Html5Qrcode) { mostrarError('No cargó el lector de códigos. Revisar la conexión a internet.'); return; }
+  lector = lector || new Html5Qrcode('lector', { formatsToSupport: formatos(), verbose: false, experimentalFeatures: { useBarCodeDetectorIfSupported: true } });
+  var t0 = Date.now();
+  lector.start({ facingMode: 'environment' }, { fps: 12, qrbox: function (w, h) { return { width: Math.floor(w * 0.9), height: Math.floor(h * 0.8) }; } },
+    function (texto) { leido(texto, 'cámara'); }, function () {})
+    .then(function () {
+      diag('Cámara abierta correctamente en ' + (Date.now() - t0) + ' ms.');
+      document.getElementById('bCam').style.display = 'none';
+      document.getElementById('bStop').style.display = 'block';
+    })
+    .catch(function (e) {
+      diag('La cámara no abrió: ' + (e && (e.name || e.message || e)));
+      mostrarError('La cámara no se pudo abrir en esta página (' + esc(e && (e.name || e.message || e)) + '). Revisar que el navegador tenga permiso de cámara para esta página.');
+    });
+}
+function detenerCamara() {
+  if (lector) lector.stop().then(function () { document.getElementById('bCam').style.display = 'block'; document.getElementById('bStop').style.display = 'none'; }).catch(function () {});
+}
+function leido(texto, origen) {
+  var ahora = Date.now();
+  if (texto === ultimo && ahora - ultimoT < 2500) return;
+  ultimo = texto; ultimoT = ahora;
+  pitido();
+  buscar(texto, origen);
+}
+function buscar(codigo, origen) {
+  codigo = String(codigo || '').trim().toUpperCase();
+  if (!codigo) return;
+  var t0 = Date.now();
+  var fin = function (p) {
+    var ms = Date.now() - t0;
+    if (!p) { mostrarError('El código «' + esc(codigo) + '» no está registrado en esta prueba.'); agregarHist(codigo, 'no registrado', origen, ms); return; }
+    document.getElementById('resultado').innerHTML = '<div class="prod"><div class="muted">Código ' + esc(p.codigo) + ' · leído por ' + esc(origen) + '</div><div class="n">' + esc(p.nombre) + '</div><div class="p">' + pesos(p.precio) + '</div><div>Talla: ' + esc(p.talla) + ' · Disponibles: ' + p.stock + '</div><div class="muted">Respuesta en ' + ms + ' ms</div></div>';
+    agregarHist(codigo, p.nombre, origen, ms);
+  };
+  fetch(API + '?accion=buscar&codigo=' + encodeURIComponent(codigo))
+    .then(function (r) { return r.json(); })
+    .then(function (j) { fin(j.producto); })
+    .catch(function (e) { mostrarError('Sin conexión con la base de datos: ' + esc(e.message)); });
+}
+function mostrarError(t) { document.getElementById('resultado').innerHTML = '<div class="err">' + t + '</div>'; }
+function agregarHist(c, n, o, ms) {
+  hist.unshift({ c: c, n: n, o: o, ms: ms, h: new Date().toLocaleTimeString('es-CO') });
+  document.getElementById('hist').innerHTML = hist.slice(0, 10).map(function (x) { return '<li>' + esc(x.h) + ' · ' + esc(x.c) + ' · ' + esc(x.n) + ' <span class="muted">(' + esc(x.o) + ', ' + x.ms + ' ms)</span></li>'; }).join('');
+}
+</script>
+</body>
+</html>
