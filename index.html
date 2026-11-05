@@ -252,6 +252,12 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
         <button data-f="pocas" onclick="filtroInv('pocas')">Quedan 1 o 2</button>
       </div>
     </div>
+    <div class="card">
+      <h2>Imprimir etiquetas de la lista</h2>
+      <p class="muted">Usa la lista de abajo (con el buscador y el filtro). Sirve para reimprimir las etiquetas que ya se pegaron.</p>
+      <button class="btn sec" onclick="etiquetasLista(true)">Una etiqueta por cada unidad disponible</button>
+      <button class="btn sec" onclick="etiquetasLista(false)">Una etiqueta por prenda</button>
+    </div>
     <div class="card"><div id="invLista"></div></div>
   </section>
 
@@ -276,6 +282,15 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 
   <!-- ======================= EMPLEADOS ======================= -->
   <section id="vEmpleados" class="oculto">
+    <div class="card">
+      <h2>Ajuste de la impresora</h2>
+      <p class="muted">Algunas impresoras no alcanzan a imprimir los bordes de la etiqueta y el QR queda cortado. 1) Imprimir la etiqueta de calibración. 2) Anotar el número más pequeño que se vea completo a la izquierda y a la derecha. 3) Escribirlos aquí y guardar.</p>
+      <button class="btn sec" onclick="imprimirCalibracion()">Imprimir etiqueta de calibración</button>
+      <div class="g2"><div><label class="f" for="nIzq">Número a la izquierda</label><input id="nIzq" inputmode="decimal" placeholder="0"></div><div><label class="f" for="nDer">Número a la derecha</label><input id="nDer" inputmode="decimal" placeholder="0"></div></div>
+      <button class="btn" onclick="guardarNegocio('msgImp')">Guardar ajuste</button>
+      <div id="msgImp"></div>
+      <p class="muted">Después de guardar, volver a imprimir las etiquetas desde Inventario.</p>
+    </div>
     <div class="card">
       <h2>Datos del negocio</h2>
       <p class="muted">Salen en el encabezado del comprobante que se imprime.</p>
@@ -659,15 +674,26 @@ function ajustarTexto(ctx, t, maxW, tam, peso, fam) {
   var s = tam;
   while (true) { ctx.font = peso + ' ' + s + 'px ' + fam; if (ctx.measureText(t).width <= maxW || s <= 10) return s; s -= 1; }
 }
+function zonaSegura() {
+  var n = S.negocio || {}, L = 0.6 + (Number(n.cortIzq) || 0), R = 0.6 + (Number(n.cortDer) || 0);
+  return { L: L, R: R, s: Math.min(1, (50 - L - R) / 48.8) };
+}
 function dibujarEtiqueta(canvas, p) {
   canvas.width = 50 * MM; canvas.height = 30 * MM;
   var c = canvas.getContext('2d'), F = '"Barlow Condensed", "Arial Narrow", sans-serif';
   c.fillStyle = '#fff'; c.fillRect(0, 0, canvas.width, canvas.height);
-  // QR con margen blanco
-  var qr = qrcode(0, 'M'); qr.addData(p.codigo); qr.make();
+  // todo el diseño se dibuja dentro de la zona que la impresora sí alcanza
+  var z = zonaSegura();
+  c.setTransform(z.s, 0, 0, z.s, (z.L - 0.6 * z.s) * MM, (30 - 30 * z.s) / 2 * MM);
+  // QR con margen blanco y corrección de errores alta
+  var qr = qrcode(0, 'Q');
+  try { qr.addData(p.codigo, /^[0-9A-Z $%*+\-.\/:]+$/.test(p.codigo) ? 'Alphanumeric' : 'Byte'); qr.make(); }
+  catch (e) { qr = qrcode(0, 'M'); qr.addData(p.codigo); qr.make(); }
   var n = qr.getModuleCount(), caja = 23 * MM, mod = Math.floor(caja / (n + 4)), x0 = Math.round(0.6 * MM + (caja - mod * n) / 2), y0 = Math.round(1.2 * MM + (caja - mod * n) / 2);
   c.fillStyle = '#000';
-  for (var r = 0; r < n; r++) for (var k = 0; k < n; k++) if (qr.isDark(r, k)) c.fillRect(x0 + k * mod, y0 + r * mod, mod, mod);
+  c.beginPath(); // una sola figura: sin rayas blancas entre cuadritos al escalar
+  for (var r = 0; r < n; r++) for (var k = 0; k < n; k++) if (qr.isDark(r, k)) c.rect(x0 + k * mod, y0 + r * mod, mod, mod);
+  c.fill();
   c.textAlign = 'center'; c.textBaseline = 'alphabetic';
   c.font = '600 ' + Math.round(2.9 * MM) + 'px ' + F;
   c.fillText(p.codigo, 0.6 * MM + caja / 2, 27.6 * MM);
@@ -699,7 +725,64 @@ function dibujarEtiqueta(canvas, p) {
   c.fillRect(X, 22.6 * MM, W, 5.4 * MM);
   c.fillStyle = '#fff'; c.font = '800 ' + Math.round(3.9 * MM) + 'px ' + F;
   c.fillText('SM BOUTIQUE', cx, 25.4 * MM);
+  c.setTransform(1, 0, 0, 1, 0, 0);
   return canvas;
+}
+function etiquetaCalibracion() {
+  var cv = document.createElement('canvas'); cv.width = 50 * MM; cv.height = 30 * MM;
+  var c = cv.getContext('2d'), F = '"Barlow Condensed", "Arial Narrow", sans-serif';
+  c.fillStyle = '#fff'; c.fillRect(0, 0, cv.width, cv.height); c.fillStyle = '#000';
+  c.font = '800 ' + Math.round(2.4 * MM) + 'px ' + F; c.textBaseline = 'top';
+  for (var k = 0; k <= 7; k++) {
+    var y = (0.6 + k * 3.6) * MM;
+    c.textAlign = 'left'; c.fillText(String(k), k * MM, y);
+    c.textAlign = 'right'; c.fillText(String(k), (50 - k) * MM, y);
+  }
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.font = '800 ' + Math.round(3.2 * MM) + 'px ' + F; c.fillText('CALIBRACIÓN', 25 * MM, 8 * MM);
+  c.font = '600 ' + Math.round(2.1 * MM) + 'px ' + F;
+  ['Anotar el número más pequeño', 'que se vea COMPLETO', 'a la izquierda y a la derecha'].forEach(function (t, i) { c.fillText(t, 25 * MM, (13 + i * 2.8) * MM); });
+  c.fillRect(9 * MM, 23 * MM, 32 * MM, 0.4 * MM);
+  c.font = '600 ' + Math.round(1.9 * MM) + 'px ' + F; c.fillText('← izquierda          derecha →', 25 * MM, 25.6 * MM);
+  return cv;
+}
+function imprimirCalibracion() {
+  fuentesListas().then(function () {
+    var img = etiquetaCalibracion().toDataURL('image/png');
+    var doc = new jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: [30, 50] });
+    doc.addImage(img, 'PNG', 0, 0, 50, 30);
+    var blob = doc.output('blob'), f = new File([blob], 'Etiqueta de calibracion.pdf', { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) return navigator.share({ files: [f], title: f.name }).catch(function () {});
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 3000);
+  });
+}
+function etiquetasLista(segunUnidades) {
+  var q = $('buscar').value.trim().toLowerCase();
+  var L = S.lista.slice().reverse().filter(function (p) {
+    if (S.invFiltro === 'agotadas' && p.stock > 0) return false;
+    if (S.invFiltro === 'pocas' && (p.stock < 1 || p.stock > 2)) return false;
+    return !q || (p.codigo + ' ' + p.nombre + ' ' + p.categoria + ' ' + p.talla + ' ' + p.color).toLowerCase().indexOf(q) >= 0;
+  });
+  var total = L.reduce(function (s, p) { return s + (segunUnidades ? Math.max(0, p.stock) : 1); }, 0);
+  if (!total) return toast('No hay etiquetas para imprimir con este filtro.');
+  if (total > 400) return toast('Son ' + total + ' etiquetas. Usar el buscador para imprimir por partes (máximo 400).');
+  if (!confirm('Se va a crear un PDF con ' + total + ' etiquetas (' + L.length + ' prendas). ¿Continuar?')) return;
+  toast('Creando PDF…');
+  fuentesListas().then(function () {
+    var doc = new jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: [30, 50], compress: true }), primera = true, cv = document.createElement('canvas');
+    L.forEach(function (p, i) {
+      var copias = segunUnidades ? Math.max(0, p.stock) : 1;
+      if (!copias) return;
+      var img = dibujarEtiqueta(cv, p).toDataURL('image/png');
+      for (var k = 0; k < copias; k++) {
+        if (!primera) doc.addPage([30, 50], 'landscape');
+        doc.addImage(img, 'PNG', 0, 0, 50, 30, 'e' + i, 'FAST'); primera = false;
+      }
+    });
+    var blob = doc.output('blob'), nombre = 'Etiquetas inventario (' + total + ').pdf', f = new File([blob], nombre, { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) return navigator.share({ files: [f], title: nombre }).catch(function () {});
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nombre; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 4000);
+  });
 }
 function fuentesListas() {
   if (!document.fonts || !document.fonts.load) return Promise.resolve();
@@ -1062,13 +1145,18 @@ function pintarNegocio() {
   var n = S.negocio || {};
   $('nNombre').value = n.nombre || ''; $('nDoc').value = n.documento || ''; $('nDir').value = n.direccion || '';
   $('nCiudad').value = n.ciudad || ''; $('nTel').value = n.telefono || ''; $('nPie').value = n.pie || '';
+  $('nIzq').value = n.cortIzq || 0; $('nDer').value = n.cortDer || 0;
 }
-function guardarNegocio() {
-  var n = { nombre: $('nNombre').value, documento: $('nDoc').value, direccion: $('nDir').value, ciudad: $('nCiudad').value, telefono: $('nTel').value, pie: $('nPie').value };
+function guardarNegocio(caja) {
+  caja = caja || 'msgNeg';
+  var n = { nombre: $('nNombre').value, documento: $('nDoc').value, direccion: $('nDir').value, ciudad: $('nCiudad').value, telefono: $('nTel').value, pie: $('nPie').value,
+    cortIzq: $('nIzq').value.replace(',', '.'), cortDer: $('nDer').value.replace(',', '.') };
   conPin({ accion: 'guardarNegocio', negocio: n }).then(function (j) {
-    if (!j.ok) return msg('msgNeg', j.error);
-    S.negocio = j.negocio; msg('msgNeg', 'Datos guardados.', 'ok');
-  }).catch(function () { msg('msgNeg', 'Sin conexión.'); });
+    if (!j.ok) return msg(caja, j.error);
+    S.negocio = j.negocio;
+    if (j.negocio.cortIzq === undefined && (Number(n.cortIzq) || Number(n.cortDer))) return msg(caja, 'Falta actualizar el código de Apps Script para guardar el ajuste de la impresora.');
+    msg(caja, caja === 'msgImp' ? 'Ajuste guardado: izquierda ' + (j.negocio.cortIzq || 0) + ' mm, derecha ' + (j.negocio.cortDer || 0) + ' mm.' : 'Datos guardados.', 'ok');
+  }).catch(function () { msg(caja, 'Sin conexión.'); });
 }
 function pruebaComprobante() {
   S.negocio = { nombre: $('nNombre').value || 'SM BOUTIQUE', documento: $('nDoc').value, direccion: $('nDir').value, ciudad: $('nCiudad').value, telefono: $('nTel').value, pie: $('nPie').value };
@@ -1114,20 +1202,20 @@ function lineasTexto(ctx, t, maxW) {
   return out;
 }
 function dibujarComprobante(d) {
-  var W = 50 * MM, M = Math.round(2.2 * MM), CW = W - 2 * M, F = '"Barlow Condensed", "Arial Narrow", sans-serif', FB = 'Barlow, Arial, sans-serif';
+  var Z = zonaSegura(), W = 50 * MM, M = Math.round((Z.L + 1.4) * MM), MR = Math.round((Z.R + 1.4) * MM), CW = W - M - MR, CX = M + CW / 2, F = '"Barlow Condensed", "Arial Narrow", sans-serif', FB = 'Barlow, Arial, sans-serif';
   var cv = document.createElement('canvas'); cv.width = W; cv.height = 9000;
   var c = cv.getContext('2d'), y = M + 4, n = S.negocio || {};
   c.fillStyle = '#fff'; c.fillRect(0, 0, W, cv.height); c.fillStyle = '#000'; c.textBaseline = 'alphabetic';
   function txt(t, tam, peso, al, fam) {
     c.font = (peso || 600) + ' ' + tam + 'px ' + (fam || FB); c.textAlign = al || 'left';
-    lineasTexto(c, t, CW).forEach(function (l) { y += tam * 1.18; c.fillText(l, al === 'center' ? W / 2 : al === 'right' ? W - M : M, y); });
+    lineasTexto(c, t, CW).forEach(function (l) { y += tam * 1.18; c.fillText(l, al === 'center' ? CX : al === 'right' ? W - MR : M, y); });
   }
   function par(a, b, tam, peso) {
     tam = tam || 30; c.font = (peso || 600) + ' ' + tam + 'px ' + FB;
     var wb = c.measureText(b).width, la = lineasTexto(c, a, CW - wb - 14);
-    la.forEach(function (l, i) { y += tam * 1.18; c.textAlign = 'left'; c.fillText(l, M, y); if (i === 0) { c.textAlign = 'right'; c.fillText(b, W - M, y); } });
+    la.forEach(function (l, i) { y += tam * 1.18; c.textAlign = 'left'; c.fillText(l, M, y); if (i === 0) { c.textAlign = 'right'; c.fillText(b, W - MR, y); } });
   }
-  function raya(gruesa) { y += 12; if (gruesa) c.fillRect(M, y, CW, 4); else for (var x = M; x < W - M; x += 16) c.fillRect(x, y, 9, 2); y += 6; }
+  function raya(gruesa) { y += 12; if (gruesa) c.fillRect(M, y, CW, 4); else for (var x = M; x < W - MR; x += 16) c.fillRect(x, y, 9, 2); y += 6; }
   function esp(v) { y += v; }
   txt(n.nombre || 'SM BOUTIQUE', 64, 800, 'center', F);
   if (n.documento) txt(n.documento, 28, 600, 'center');
