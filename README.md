@@ -1,5 +1,6 @@
 # SM Boutique
 
-Página de prueba para escanear las etiquetas de las prendas con la cámara del celular.
+Plataforma de ventas e inventario de SM Boutique.
 
-Dirección: https://amaya788.github.io/sm-boutique/
+- Página: https://amaya788.github.io/sm-boutique/
+- Los datos se guardan en una hoja de Google mediante Google Apps Script.
