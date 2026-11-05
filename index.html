@@ -105,10 +105,11 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 </header>
 <nav class="tabs oculto" id="tabs">
   <button data-v="vender" class="on" onclick="ir('vender')">Vender</button>
-  <button data-v="registrar" onclick="ir('registrar')">Registrar prenda</button>
-  <button data-v="inventario" onclick="ir('inventario')">Inventario</button>
-  <button data-v="ventas" onclick="ir('ventas')">Ventas y ganancias</button>
-  <button data-v="empleados" onclick="ir('empleados')">Empleados</button>
+  <button data-v="apartados" onclick="ir('apartados')">Apartados</button>
+  <button data-v="registrar" class="dueno" onclick="ir('registrar')">Registrar prenda</button>
+  <button data-v="inventario" class="dueno" onclick="ir('inventario')">Inventario</button>
+  <button data-v="ventas" class="dueno" onclick="ir('ventas')">Ventas y ganancias</button>
+  <button data-v="empleados" class="dueno" onclick="ir('empleados')">Ajustes</button>
 </nav>
 
 <main class="wrap">
@@ -168,22 +169,34 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
           <div class="cambio" id="cambio"></div>
         </div>
         <button class="btn ok" id="bCobrar" onclick="cobrar()" disabled>Cobrar</button>
+        <button class="btn sec" id="bApartar" onclick="abrirApartar()" disabled>Apartar con abono</button>
         <button class="btn peligro" onclick="cancelarVenta()">Cancelar venta</button>
         <div id="msgVenta"></div>
       </div>
     </div>
 
     <div id="ventaHecha" class="oculto">
-      <div class="recibo">
-        <div style="font-weight:700">Venta registrada</div>
-        <div class="muted" id="rNum"></div>
-        <div class="big" id="rTotal"></div>
-        <div id="rMetodo"></div>
-        <div class="cambio" id="rCambio"></div>
-      </div>
+      <div class="recibo" id="hechoInfo"></div>
       <div id="rAvisos"></div>
-      <button class="btn" onclick="nuevaVenta()">Nueva venta</button>
+      <button class="btn" onclick="imprimirHecho()">Imprimir comprobante</button>
+      <button class="btn sec" onclick="nuevaVenta()">Nueva venta</button>
     </div>
+  </section>
+
+  <!-- ======================= APARTADOS ======================= -->
+  <section id="vApartados" class="oculto">
+    <div class="card">
+      <h2>Apartados</h2>
+      <p class="muted">Prendas que el cliente dejó separadas con un abono. Para apartar, agregar las prendas en «Vender» y tocar «Apartar con abono».</p>
+      <label class="f" for="buscarAp">Buscar por nombre, teléfono o número</label>
+      <input id="buscarAp" placeholder="Buscar…" oninput="pintarApartados()">
+      <div class="chips dueno" id="apFiltro" style="margin-top:8px">
+        <button class="on" data-f="pend" onclick="filtroAp('pend')">Pendientes</button>
+        <button data-f="todos" onclick="filtroAp('todos')">Todos (entregados y cancelados)</button>
+      </div>
+      <div class="kpis" id="apKpis" style="margin-top:10px"></div>
+    </div>
+    <div class="card"><div id="apLista"><p class="muted">Cargando…</p></div></div>
   </section>
 
   <!-- ======================= REGISTRAR ======================= -->
@@ -260,6 +273,18 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   <!-- ======================= EMPLEADOS ======================= -->
   <section id="vEmpleados" class="oculto">
     <div class="card">
+      <h2>Datos del negocio</h2>
+      <p class="muted">Salen en el encabezado del comprobante que se imprime.</p>
+      <label class="f" for="nNombre">Nombre del negocio</label><input id="nNombre" maxlength="40">
+      <label class="f" for="nDoc">NIT o cédula</label><input id="nDoc" maxlength="40" placeholder="Ej: NIT 900.123.456-7">
+      <label class="f" for="nDir">Dirección</label><input id="nDir" maxlength="60">
+      <div class="g2"><div><label class="f" for="nCiudad">Ciudad</label><input id="nCiudad" maxlength="40"></div><div><label class="f" for="nTel">Teléfono / WhatsApp</label><input id="nTel" maxlength="40" inputmode="tel"></div></div>
+      <label class="f" for="nPie">Mensaje al final del comprobante</label><input id="nPie" maxlength="160" placeholder="Ej: Cambios dentro de 8 días presentando este comprobante.">
+      <button class="btn" onclick="guardarNegocio()">Guardar datos del negocio</button>
+      <button class="btn sec" onclick="pruebaComprobante()">Ver comprobante de ejemplo</button>
+      <div id="msgNeg"></div>
+    </div>
+    <div class="card">
       <h2>Empleados</h2>
       <p class="muted">Cada empleado entra con su PIN de 4 números. Solo puede vender: no ve costos ni ganancias.</p>
       <div id="empLista"></div>
@@ -332,7 +357,7 @@ function ocupado(btn, si, texto) {
 
 // ===================================================================== ingreso
 function mostrar(id) {
-  ['vCargando', 'vConfig', 'vLogin', 'vVender', 'vRegistrar', 'vInventario', 'vVentas', 'vEmpleados'].forEach(function (v) { $(v).classList.toggle('oculto', v !== id); });
+  ['vCargando', 'vConfig', 'vLogin', 'vVender', 'vApartados', 'vRegistrar', 'vInventario', 'vVentas', 'vEmpleados'].forEach(function (v) { $(v).classList.toggle('oculto', v !== id); });
   window.scrollTo(0, 0);
 }
 function arrancar() {
@@ -362,7 +387,9 @@ function entrar(auto) {
     $('pin').value = ''; msg('msgLogin', '');
     $('quien').textContent = j.rol === 'propietario' ? 'Propietario' : j.nombre;
     $('bSalir').classList.remove('oculto');
-    $('tabs').classList.toggle('oculto', j.rol !== 'propietario');
+    S.negocio = j.negocio || { nombre: 'SM BOUTIQUE' };
+    $('tabs').classList.remove('oculto');
+    document.querySelectorAll('.dueno').forEach(function (e) { e.classList.toggle('oculto', j.rol !== 'propietario'); });
     pintarMetodos();
     S.carrito = leerLocal('smb_carrito') || [];
     cargarCatalogo().then(function () { pintarCarrito(); });
@@ -380,14 +407,15 @@ function salir() {
   mostrar('vLogin');
 }
 function ir(v) {
-  if (S.rol !== 'propietario' && v !== 'vender') v = 'vender';
+  if (S.rol !== 'propietario' && v !== 'vender' && v !== 'apartados') v = 'vender';
   if (v !== 'vender') detenerCamara();
   S.vista = v;
   document.querySelectorAll('#tabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === v); });
   mostrar('v' + v.charAt(0).toUpperCase() + v.slice(1));
   if (v === 'inventario') cargarCatalogo().then(pintarInventario);
   if (v === 'ventas') periodo(S.periodo || 'hoy');
-  if (v === 'empleados') cargarEmpleados();
+  if (v === 'empleados') { cargarEmpleados(); pintarNegocio(); }
+  if (v === 'apartados') cargarApartados();
 }
 
 // ===================================================================== catálogo
@@ -518,6 +546,7 @@ function calcCambio() {
 function validarCobro() {
   var okk = S.carrito.length && S.metodo && (S.metodo !== 'Efectivo' || numVal('recibido') >= totalCarrito());
   $('bCobrar').disabled = !okk;
+  $('bApartar').disabled = !S.carrito.length;
 }
 function cobrar() {
   if (!S.carrito.length || !S.metodo) return;
@@ -528,17 +557,33 @@ function cobrar() {
     ocupado(b, false);
     if (!j.ok) return msg('msgVenta', j.error || 'No se pudo registrar la venta.');
     Object.keys(j.stock || {}).forEach(function (c) { if (S.catalogo[c]) S.catalogo[c].stock = j.stock[c]; });
-    detenerCamara();
-    $('rNum').textContent = 'Venta N° ' + j.numero + (S.rol === 'empleado' ? ' · ' + S.nombre : '');
-    $('rTotal').textContent = pesos(j.total);
-    $('rMetodo').textContent = j.metodo;
-    $('rCambio').textContent = j.metodo === 'Efectivo' ? 'Cambio: ' + pesos(j.cambio) : '';
-    $('rAvisos').innerHTML = (j.avisos || []).map(function (a) { return '<div class="aviso warn">' + esc(a) + '</div>'; }).join('');
-    $('ventaActiva').classList.add('oculto'); $('ventaHecha').classList.remove('oculto');
-    pitido(true);
+    S.hecho = { tipo: 'venta', numero: j.numero, fecha: j.fecha, empleado: S.nombre, metodo: j.metodo, total: j.total, recibido: j.recibido, cambio: j.cambio, cliente: {}, items: itemsCarrito() };
+    mostrarHecho(j.avisos);
     S.carrito = []; S.idVenta = null; guardarLocal('smb_carrito', []);
   }).catch(function () { ocupado(b, false); msg('msgVenta', 'Sin conexión. Revisar internet y tocar Cobrar otra vez (no se cobra doble).'); });
 }
+function itemsCarrito() {
+  return S.carrito.map(function (x) { var p = S.catalogo[x.codigo] || { nombre: x.codigo, precio: 0, talla: '' }; return { codigo: x.codigo, nombre: p.nombre, talla: p.talla, cantidad: x.cantidad, precio: p.precio }; });
+}
+function mostrarHecho(avisos) {
+  var h = S.hecho, html;
+  detenerCamara();
+  if (h.tipo === 'venta') {
+    html = '<div style="font-weight:700">Venta registrada</div><div class="muted">Venta N° ' + h.numero + (S.rol === 'empleado' ? ' · ' + esc(S.nombre) : '') + '</div><div class="big">' + pesos(h.total) + '</div><div>' + esc(h.metodo) + '</div>' + (h.metodo === 'Efectivo' ? '<div class="cambio">Cambio: ' + pesos(h.cambio) + '</div>' : '');
+  } else {
+    var a = h.apartado;
+    html = '<div style="font-weight:700">' + (a.estado === 'Entregado' ? 'Apartado pagado: entregar las prendas' : (h.abonoHoy && a.abonos.length > 1 ? 'Abono registrado' : 'Apartado registrado')) + '</div><div class="muted">Apartado N° ' + a.numero + ' · ' + esc(a.cliente.nombre) + '</div>' +
+      (h.abonoHoy ? '<div>Abono de hoy: <b>' + pesos(h.abonoHoy.monto) + '</b> (' + esc(h.abonoHoy.metodo) + ')</div>' : '') +
+      (a.estado === 'Entregado' ? '<div class="big">PAGADO</div><div>Se registró la venta N° ' + a.venta + ' por ' + pesos(a.total) + '</div>' : '<div class="muted" style="margin-top:6px">Saldo pendiente</div><div class="big">' + pesos(a.saldo) + '</div><div>Abonado ' + pesos(a.abonado) + ' de ' + pesos(a.total) + '</div><div>Reclamar antes de ' + fechaCorta(a.limite) + '</div>');
+  }
+  $('hechoInfo').innerHTML = html;
+  $('rAvisos').innerHTML = (avisos || []).map(function (x) { return '<div class="aviso warn">' + esc(x) + '</div>'; }).join('');
+  $('ventaActiva').classList.add('oculto'); $('ventaHecha').classList.remove('oculto');
+  if (S.vista !== 'vender') { S.vista = 'vender'; document.querySelectorAll('#tabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === 'vender'); }); mostrar('vVender'); }
+  window.scrollTo(0, 0);
+  pitido(true);
+}
+function fechaCorta(iso) { return iso && iso.length >= 10 ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : iso; }
 function limpiarVenta() {
   S.carrito = []; S.metodo = ''; S.idVenta = null; ultimoT = Date.now(); // la última etiqueta leída sigue bloqueada mientras esté frente a la cámara
   $('recibido').value = ''; $('cambio').textContent = ''; msg('msgVenta', ''); msg('avisoScan', '');
@@ -763,11 +808,15 @@ function periodo(p) {
   }).catch(function () { $('repo').innerHTML = '<div class="aviso err">Sin conexión.</div>'; });
 }
 function pintarResumen(r) {
+  r.caja = r.caja || {}; ['cajaTotal', 'abonos', 'devoluciones', 'abonosPerdidos', 'apartadosPendientes', 'saldoPorCobrar', 'abonadoPendiente'].forEach(function (k) { r[k] = r[k] || 0; });
   var margen = r.total ? Math.round(r.ganancia / r.total * 100) : 0;
   var h = '<div class="card"><div class="kpis">' + kpi('Vendido', pesos(r.total)) + kpi('Ganancia', pesos(r.ganancia), r.ganancia < 0 ? 'neg' : '') + kpi('Margen', margen + '%') + kpi('Ventas', r.ventas) +
     kpi('Prendas vendidas', r.prendas) + kpi('Costo de lo vendido', pesos(r.costo)) + kpi('Venta promedio', pesos(r.ventas ? r.total / r.ventas : 0)) + kpi('Anuladas', r.anuladas) + '</div></div>';
-  var mets = Object.keys(r.metodos).sort(function (a, b) { return r.metodos[b].total - r.metodos[a].total; });
-  h += '<div class="card"><h2>Por medio de pago</h2>' + (mets.length ? '<table><tr><th>Medio</th><th class="n">Ventas</th><th class="n">Total</th></tr>' + mets.map(function (m) { return '<tr><td>' + esc(m) + '</td><td class="n">' + r.metodos[m].ventas + '</td><td class="n">' + pesos(r.metodos[m].total) + '</td></tr>'; }).join('') + '</table>' : '<p class="muted">Sin ventas en este periodo.</p>') + '</div>';
+  var mets = Object.keys(r.caja).filter(function (m) { return r.caja[m]; }).sort(function (a, b) { return r.caja[b] - r.caja[a]; });
+  h += '<div class="card"><h2>Dinero que entró por medio de pago</h2><p class="muted">Ventas cobradas más abonos de apartados' + (r.devoluciones ? ', menos devoluciones' : '') + '. Sirve para cuadrar caja, Nequi, Daviplata y datáfono.</p>' +
+    (mets.length ? '<table><tr><th>Medio</th><th class="n">Valor</th></tr>' + mets.map(function (m) { return '<tr><td>' + esc(m) + '</td><td class="n">' + pesos(r.caja[m]) + '</td></tr>'; }).join('') + '<tr><td><b>Total</b></td><td class="n"><b>' + pesos(r.cajaTotal) + '</b></td></tr></table>' : '<p class="muted">No entró dinero en este periodo.</p>') + '</div>';
+  h += '<div class="card"><h2>Apartados</h2><div class="kpis">' + kpi('Abonos recibidos', pesos(r.abonos)) + kpi('Devoluciones', pesos(r.devoluciones)) + kpi('Abonos no devueltos', pesos(r.abonosPerdidos)) + kpi('Pendientes hoy', r.apartadosPendientes) +
+    kpi('Saldo por cobrar', pesos(r.saldoPorCobrar)) + kpi('Ya abonado (pendientes)', pesos(r.abonadoPendiente)) + '</div><p class="muted">Un apartado cuenta como venta el día que el cliente termina de pagar y se lleva las prendas.</p></div>';
   var emps = Object.keys(r.empleados).sort(function (a, b) { return r.empleados[b].total - r.empleados[a].total; });
   if (emps.length) h += '<div class="card"><h2>Por empleado</h2><table><tr><th>Empleado</th><th class="n">Ventas</th><th class="n">Total</th></tr>' + emps.map(function (e) { return '<tr><td>' + esc(e) + '</td><td class="n">' + r.empleados[e].ventas + '</td><td class="n">' + pesos(r.empleados[e].total) + '</td></tr>'; }).join('') + '</table></div>';
   if (r.top.length) h += '<div class="card"><h2>Lo que más se vende</h2><table><tr><th>Prenda</th><th class="n">Unid.</th><th class="n">Total</th></tr>' + r.top.map(function (t) { return '<tr><td>' + esc(t.nombre) + (t.talla ? ' · ' + esc(t.talla) : '') + '<div class="muted">' + esc(t.codigo) + '</div></td><td class="n">' + t.cantidad + '</td><td class="n">' + pesos(t.total) + '</td></tr>'; }).join('') + '</table></div>';
@@ -777,7 +826,9 @@ function pintarResumen(r) {
   }).join('') + '</table></div>';
   h += '<div class="card"><h2>Inventario actual</h2><div class="kpis">' + kpi('Referencias', r.inventario.referencias) + kpi('Unidades', r.inventario.unidades) + kpi('Valor a costo', pesos(r.inventario.valorCosto)) + kpi('Valor a precio de venta', pesos(r.inventario.valorVenta)) + '</div></div>';
   h += '<div class="card"><h2>Ventas del periodo</h2>' + (r.lista.length ? r.lista.map(function (v) {
-    return '<div class="item ' + (v.estado === 'Anulada' ? 'anulada' : '') + '"><div><div class="n">N° ' + v.numero + ' · ' + esc(v.metodo) + '</div><div class="s">' + esc(v.fecha) + ' · ' + esc(v.empleado) + '</div><div class="s">' + esc(v.prendas) + '</div></div><div class="pr">' + pesos(v.total) + (v.estado === 'Anulada' ? '<div class="s">Anulada</div>' : '<div><button class="btn chico peligro" style="margin-top:6px" onclick="anular(' + v.numero + ')">Anular</button></div>') + '</div></div>';
+    return '<div class="item ' + (v.estado === 'Anulada' ? 'anulada' : '') + '"><div><div class="n">N° ' + v.numero + ' · ' + esc(v.metodo) + '</div><div class="s">' + esc(v.fecha) + ' · ' + esc(v.empleado) + (v.cliente ? ' · Cliente: ' + esc(v.cliente) : '') + '</div><div class="s">' + esc(v.prendas) + '</div></div><div class="pr">' + pesos(v.total) +
+      '<div><button class="btn chico sec" style="margin-top:6px" onclick="reimprimirVenta(' + v.numero + ')">Comprobante</button></div>' +
+      (v.estado === 'Anulada' ? '<div class="s">Anulada</div>' : (v.apartado ? '' : '<div><button class="btn chico peligro" style="margin-top:6px" onclick="anular(' + v.numero + ')">Anular</button></div>')) + '</div></div>';
   }).join('') : '<p class="muted">Sin ventas.</p>') + '</div>';
   $('repo').innerHTML = h;
 }
@@ -823,6 +874,297 @@ function cambiarMiPin() {
 function abrirHoja() {
   var w = window.open('', '_blank');
   conPin({ accion: 'hoja' }).then(function (j) { if (j.ok && w) w.location = j.url; else if (j.ok) location.href = j.url; });
+}
+
+// ===================================================================== apartar (desde la cuenta)
+function botonesMetodo(id, fn) {
+  return '<div class="metodos" id="' + id + '">' + S.metodos.map(function (m) { return '<button type="button" data-m="' + esc(m) + '" onclick="marcarMetodo(\'' + id + '\', this.dataset.m)">' + esc(m) + '</button>'; }).join('') + '</div>';
+}
+function marcarMetodo(id, m) {
+  $(id).dataset.sel = m;
+  $(id).querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.dataset.m === m); });
+}
+function abrirApartar() {
+  if (!S.carrito.length) return;
+  var t = totalCarrito();
+  $('modalCaja').innerHTML =
+    '<h2>Apartar con abono</h2><p class="muted">Las prendas quedan separadas para el cliente y salen del inventario disponible. Total: <b>' + pesos(t) + '</b></p>' +
+    '<label class="f" for="aNombre">Nombre del cliente *</label><input id="aNombre" maxlength="50" autocomplete="off">' +
+    '<div class="g2"><div><label class="f" for="aTel">Celular *</label><input id="aTel" inputmode="tel" maxlength="20"></div><div><label class="f" for="aDoc">Cédula (opcional)</label><input id="aDoc" inputmode="numeric" maxlength="20"></div></div>' +
+    '<label class="f" for="aAbono">Abono que deja hoy *</label><input id="aAbono" inputmode="numeric" placeholder="$0" oninput="formatoInput(this);saldoApartar()">' +
+    '<div class="rapidos">' + [0.3, 0.5].map(function (f) { var v = Math.round(t * f / 1000) * 1000; return '<button type="button" onclick="$(\'aAbono\').value=pesos(' + v + ');saldoApartar()">' + Math.round(f * 100) + '% · ' + pesos(v) + '</button>'; }).join('') + '</div>' +
+    '<div id="aSaldo" class="cambio"></div>' +
+    '<label class="f">Medio de pago del abono *</label>' + botonesMetodo('aMetodo') +
+    '<label class="f" for="aDias">Días para reclamar</label><input id="aDias" inputmode="numeric" value="30">' +
+    '<button class="btn ok" id="bGuardarAp" onclick="guardarApartado()">Guardar apartado</button>' +
+    '<div id="msgAp"></div><button class="btn sec" onclick="cerrarModal()">Volver</button>';
+  $('modal').classList.remove('oculto');
+  setTimeout(function () { $('aNombre').focus(); }, 50);
+}
+function saldoApartar() {
+  var t = totalCarrito(), a = numVal('aAbono');
+  $('aSaldo').textContent = a > 0 ? (a >= t ? 'El abono cubre todo: mejor usar Cobrar.' : 'Saldo pendiente: ' + pesos(t - a)) : '';
+}
+function guardarApartado() {
+  var d = { accion: 'apartar', items: S.carrito, cliente: { nombre: $('aNombre').value.trim(), telefono: $('aTel').value.trim(), documento: $('aDoc').value.trim() },
+    abono: numVal('aAbono'), metodo: $('aMetodo').dataset.sel || '', dias: numVal('aDias') };
+  if (!d.cliente.nombre) return msg('msgAp', 'Falta el nombre del cliente.');
+  if (d.cliente.telefono.replace(/\D/g, '').length < 7) return msg('msgAp', 'Falta el celular del cliente.');
+  if (!(d.abono > 0)) return msg('msgAp', 'Falta el valor del abono.');
+  if (d.abono >= totalCarrito()) return msg('msgAp', 'El abono cubre todo el valor: usar «Cobrar».');
+  if (!d.metodo) return msg('msgAp', 'Elegir el medio de pago del abono.');
+  if (!S.idAp) S.idAp = 'ap' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  d.idOp = S.idAp;
+  var b = $('bGuardarAp'); ocupado(b, true);
+  conPin(d).then(function (j) {
+    ocupado(b, false);
+    if (!j.ok) return msg('msgAp', j.error);
+    Object.keys(j.stock || {}).forEach(function (c) { if (S.catalogo[c]) S.catalogo[c].stock = j.stock[c]; });
+    cerrarModal();
+    S.hecho = { tipo: 'apartado', apartado: j.apartado, abonoHoy: { monto: d.abono, metodo: d.metodo } };
+    S.carrito = []; S.idAp = null; guardarLocal('smb_carrito', []);
+    mostrarHecho(j.avisos);
+  }).catch(function () { ocupado(b, false); msg('msgAp', 'Sin conexión. Tocar otra vez (no se guarda doble).'); });
+}
+
+// ===================================================================== lista de apartados
+function cargarApartados() {
+  $('apLista').innerHTML = '<p class="muted">Cargando…</p>';
+  return conPin({ accion: 'apartados', todos: S.apFiltro === 'todos' }).then(function (j) {
+    if (!j.ok) return ($('apLista').innerHTML = '<div class="aviso err">' + esc(j.error) + '</div>');
+    S.apartados = j.apartados; pintarApartados();
+  }).catch(function () { $('apLista').innerHTML = '<div class="aviso err">Sin conexión.</div>'; });
+}
+function filtroAp(f) {
+  S.apFiltro = f;
+  document.querySelectorAll('#apFiltro button').forEach(function (b) { b.classList.toggle('on', b.dataset.f === f); });
+  cargarApartados();
+}
+function vencido(a) { return a.estado === 'Pendiente' && a.limite && a.limite < hoyISO(); }
+function pintarApartados() {
+  var L = S.apartados || [], q = $('buscarAp').value.trim().toLowerCase();
+  var pend = L.filter(function (a) { return a.estado === 'Pendiente'; });
+  $('apKpis').innerHTML = kpi('Pendientes', pend.length) + kpi('Por cobrar', pesos(pend.reduce(function (s, a) { return s + a.saldo; }, 0))) +
+    kpi('Ya abonado', pesos(pend.reduce(function (s, a) { return s + a.abonado; }, 0))) + kpi('Vencidos', pend.filter(vencido).length, pend.filter(vencido).length ? 'neg' : '');
+  if (q) L = L.filter(function (a) { return (a.numero + ' ' + a.cliente.nombre + ' ' + a.cliente.telefono + ' ' + a.prendas).toLowerCase().indexOf(q) >= 0; });
+  $('apLista').innerHTML = L.length ? L.map(function (a) {
+    var v = vencido(a);
+    return '<div class="prenda" role="button" tabindex="0" onclick="verApartado(' + a.numero + ')"><div><b>N° ' + a.numero + ' · ' + esc(a.cliente.nombre) + '</b><div class="muted">' + esc(a.prendas) + '</div>' +
+      '<div class="muted" style="' + (v ? 'color:var(--no);font-weight:700' : '') + '">' + (a.estado === 'Pendiente' ? (v ? 'VENCIDO el ' : 'Reclamar antes de ') + fechaCorta(a.limite) : esc(a.estado)) + '</div></div>' +
+      '<div class="st">' + (a.estado === 'Pendiente' ? 'Debe ' + pesos(a.saldo) : pesos(a.total)) + '<div class="muted" style="font-weight:600">de ' + pesos(a.total) + '</div></div></div>';
+  }).join('') : '<p class="muted">' + ((S.apartados || []).length ? 'Ningún apartado coincide.' : 'No hay apartados pendientes.') + '</p>';
+}
+function verApartado(n) {
+  var a = (S.apartados || []).find(function (x) { return x.numero === n; }); if (!a) return;
+  var tel = String(a.cliente.telefono || '').replace(/\D/g, ''); if (tel.length === 10) tel = '57' + tel;
+  var texto = 'Hola ' + a.cliente.nombre.split(' ')[0] + ', le escribimos de ' + (S.negocio.nombre || 'SM BOUTIQUE') + '. Su apartado N° ' + a.numero + ' (' + a.prendas + ') tiene un saldo de ' + pesos(a.saldo) + '. Fecha límite para reclamar: ' + fechaCorta(a.limite) + '.';
+  var h = '<h2>Apartado N° ' + a.numero + '</h2>' +
+    '<p><b>' + esc(a.cliente.nombre) + '</b> · ' + esc(a.cliente.telefono) + (a.cliente.documento ? ' · CC ' + esc(a.cliente.documento) : '') + '<br><span class="muted">Apartado el ' + esc(a.fecha) + ' por ' + esc(a.empleado) + '</span></p>' +
+    '<table>' + a.items.map(function (i) { return '<tr><td>' + esc(i.nombre) + (i.talla ? ' · T ' + esc(i.talla) : '') + '<div class="muted">' + esc(i.codigo) + '</div></td><td class="n">' + i.cantidad + ' x ' + pesos(i.precio) + '</td></tr>'; }).join('') + '<tr><td><b>Total</b></td><td class="n"><b>' + pesos(a.total) + '</b></td></tr></table>' +
+    '<h3>Abonos</h3><table>' + a.abonos.map(function (x) { return '<tr><td>' + esc(x.fecha) + '<div class="muted">' + esc(x.tipo) + ' · ' + esc(x.metodo) + ' · ' + esc(x.empleado) + '</div></td><td class="n">' + pesos(x.valor) + '</td></tr>'; }).join('') + '</table>' +
+    '<div class="kpis" style="margin-top:10px">' + kpi('Abonado', pesos(a.abonado)) + kpi('Saldo', pesos(a.saldo), a.saldo ? '' : '') + kpi('Límite', fechaCorta(a.limite), vencido(a) ? 'neg' : '') + kpi('Estado', a.estado.split(' (')[0]) + '</div>';
+  if (a.estado === 'Pendiente') {
+    h += '<h3>Registrar abono</h3><input id="abMonto" inputmode="numeric" placeholder="$0" oninput="formatoInput(this)">' +
+      '<div class="rapidos"><button type="button" onclick="$(\'abMonto\').value=pesos(' + a.saldo + ')">Paga todo el saldo · ' + pesos(a.saldo) + '</button></div>' +
+      '<label class="f">Medio de pago</label>' + botonesMetodo('abMetodo') +
+      '<button class="btn ok" id="bAbonar" onclick="registrarAbono(' + a.numero + ')">Registrar abono</button>';
+  }
+  h += '<div id="msgAbono"></div>' +
+    '<button class="btn sec" onclick="comprobanteApartado(' + a.numero + ')">Imprimir comprobante</button>' +
+    (tel && a.estado === 'Pendiente' ? '<a class="btn sec" style="text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/' + tel + '?text=' + encodeURIComponent(texto) + '">Recordar por WhatsApp</a>' : '') +
+    (S.rol === 'propietario' && a.estado === 'Pendiente' ? '<h3>Cancelar apartado</h3><p class="muted">Las prendas vuelven al inventario.</p><button class="btn peligro" onclick="cancelarAp(' + a.numero + ', true)">Cancelar y devolver ' + pesos(a.abonado) + ' al cliente</button><button class="btn peligro" onclick="cancelarAp(' + a.numero + ', false)">Cancelar: el cliente pierde el abono</button>' : '') +
+    '<button class="btn sec" onclick="cerrarModal()">Cerrar</button>';
+  $('modalCaja').innerHTML = h;
+  $('modal').classList.remove('oculto');
+}
+function registrarAbono(n) {
+  var a = S.apartados.find(function (x) { return x.numero === n; }), monto = numVal('abMonto'), metodo = $('abMetodo').dataset.sel || '';
+  if (!(monto > 0)) return msg('msgAbono', 'Escribir el valor del abono.');
+  if (monto > a.saldo) return msg('msgAbono', 'El abono es mayor que el saldo (' + pesos(a.saldo) + ').');
+  if (!metodo) return msg('msgAbono', 'Elegir el medio de pago.');
+  if (monto === a.saldo && !confirm('Con este pago el apartado queda pagado y se registra la venta. ¿Entregar las prendas al cliente?')) return;
+  if (!S.idAb) S.idAb = 'ab' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  var b = $('bAbonar'); ocupado(b, true);
+  conPin({ accion: 'abonar', numero: n, monto: monto, metodo: metodo, idOp: S.idAb }).then(function (j) {
+    ocupado(b, false);
+    if (!j.ok) return msg('msgAbono', j.error);
+    S.idAb = null; cerrarModal();
+    S.hecho = { tipo: 'apartado', apartado: j.apartado, abonoHoy: { monto: monto, metodo: metodo } };
+    mostrarHecho();
+  }).catch(function () { ocupado(b, false); msg('msgAbono', 'Sin conexión. Tocar otra vez (no se guarda doble).'); });
+}
+function cancelarAp(n, devolver) {
+  if (!confirm(devolver ? '¿Cancelar el apartado N° ' + n + ' y devolver el dinero abonado?' : '¿Cancelar el apartado N° ' + n + '? El cliente pierde lo abonado.')) return;
+  conPin({ accion: 'cancelarApartado', numero: n, devolver: devolver }).then(function (j) {
+    if (!j.ok) return msg('msgAbono', j.error);
+    cerrarModal(); toast('Apartado N° ' + n + ' cancelado. Las prendas volvieron al inventario.');
+    cargarCatalogo(); cargarApartados();
+  });
+}
+function comprobanteApartado(n) {
+  var a = S.apartados.find(function (x) { return x.numero === n; });
+  imprimirComprobante({ tipo: 'apartado', apartado: a });
+}
+
+// ===================================================================== datos del negocio
+function pintarNegocio() {
+  var n = S.negocio || {};
+  $('nNombre').value = n.nombre || ''; $('nDoc').value = n.documento || ''; $('nDir').value = n.direccion || '';
+  $('nCiudad').value = n.ciudad || ''; $('nTel').value = n.telefono || ''; $('nPie').value = n.pie || '';
+}
+function guardarNegocio() {
+  var n = { nombre: $('nNombre').value, documento: $('nDoc').value, direccion: $('nDir').value, ciudad: $('nCiudad').value, telefono: $('nTel').value, pie: $('nPie').value };
+  conPin({ accion: 'guardarNegocio', negocio: n }).then(function (j) {
+    if (!j.ok) return msg('msgNeg', j.error);
+    S.negocio = j.negocio; msg('msgNeg', 'Datos guardados.', 'ok');
+  }).catch(function () { msg('msgNeg', 'Sin conexión.'); });
+}
+function pruebaComprobante() {
+  S.negocio = { nombre: $('nNombre').value || 'SM BOUTIQUE', documento: $('nDoc').value, direccion: $('nDir').value, ciudad: $('nCiudad').value, telefono: $('nTel').value, pie: $('nPie').value };
+  imprimirComprobante({ tipo: 'venta', numero: 0, fecha: new Date().toLocaleString('es-CO'), empleado: 'Ejemplo', metodo: 'Efectivo', total: 139980, recibido: 150000, cambio: 10020,
+    cliente: { nombre: 'Cliente de ejemplo', documento: '1.052.000.000' }, items: [{ nombre: 'Blusa manga larga', talla: 'M', cantidad: 2, precio: 49990 }, { nombre: 'Correa', talla: 'Única', cantidad: 1, precio: 40000 }] }, true);
+}
+
+// ===================================================================== comprobante (rollo de 50 mm)
+function imprimirHecho() {
+  var h = S.hecho; if (!h) return;
+  if (h.tipo !== 'venta') return imprimirComprobante(h);
+  // venta: datos del cliente opcionales para la factura
+  var c = h.cliente || {};
+  $('modalCaja').innerHTML = '<h2>Comprobante de la venta N° ' + h.numero + '</h2><p class="muted">Si el cliente pide factura a su nombre, escribir sus datos. Si no, dejar vacío.</p>' +
+    '<label class="f" for="cNombre">Nombre o razón social</label><input id="cNombre" maxlength="50" value="' + esc(c.nombre || '') + '">' +
+    '<div class="g2"><div><label class="f" for="cDoc">Cédula o NIT</label><input id="cDoc" maxlength="20" value="' + esc(c.documento || '') + '"></div><div><label class="f" for="cTel">Celular</label><input id="cTel" inputmode="tel" maxlength="20" value="' + esc(c.telefono || '') + '"></div></div>' +
+    '<button class="btn" id="bImpVenta" onclick="imprimirVentaConCliente()">Crear comprobante</button><div id="msgCli"></div><button class="btn sec" onclick="cerrarModal()">Volver</button>';
+  $('modal').classList.remove('oculto');
+}
+function imprimirVentaConCliente() {
+  var h = S.hecho, c = { nombre: $('cNombre').value.trim(), documento: $('cDoc').value.trim(), telefono: $('cTel').value.trim() };
+  var cambio = c.nombre !== (h.cliente.nombre || '') || c.documento !== (h.cliente.documento || '') || c.telefono !== (h.cliente.telefono || '');
+  h.cliente = c;
+  if (!cambio || !h.numero) return imprimirComprobante(h);
+  var b = $('bImpVenta'); ocupado(b, true, 'Guardando…');
+  conPin({ accion: 'clienteVenta', numero: h.numero, cliente: c }).then(function () { ocupado(b, false); imprimirComprobante(h); })
+    .catch(function () { ocupado(b, false); imprimirComprobante(h); });
+}
+function reimprimirVenta(n) {
+  toast('Preparando comprobante…');
+  conPin({ accion: 'venta', numero: n }).then(function (j) {
+    if (!j.ok || !j.venta) return toast('No se encontró la venta.');
+    var v = j.venta;
+    S.hecho = { tipo: 'venta', numero: v.numero, fecha: v.fecha, empleado: v.empleado, metodo: v.metodo, total: v.total, recibido: v.recibido, cambio: v.cambio, cliente: v.cliente, items: v.items, abonos: v.abonos, estado: v.estado };
+    imprimirHecho();
+  });
+}
+
+function lineasTexto(ctx, t, maxW) {
+  var pal = String(t).split(' '), out = [], l = '';
+  pal.forEach(function (w) { var p = l ? l + ' ' + w : w; if (ctx.measureText(p).width > maxW && l) { out.push(l); l = w; } else l = p; });
+  if (l) out.push(l);
+  return out;
+}
+function dibujarComprobante(d) {
+  var W = 50 * MM, M = Math.round(2.2 * MM), CW = W - 2 * M, F = '"Barlow Condensed", "Arial Narrow", sans-serif', FB = 'Barlow, Arial, sans-serif';
+  var cv = document.createElement('canvas'); cv.width = W; cv.height = 9000;
+  var c = cv.getContext('2d'), y = M + 4, n = S.negocio || {};
+  c.fillStyle = '#fff'; c.fillRect(0, 0, W, cv.height); c.fillStyle = '#000'; c.textBaseline = 'alphabetic';
+  function txt(t, tam, peso, al, fam) {
+    c.font = (peso || 600) + ' ' + tam + 'px ' + (fam || FB); c.textAlign = al || 'left';
+    lineasTexto(c, t, CW).forEach(function (l) { y += tam * 1.18; c.fillText(l, al === 'center' ? W / 2 : al === 'right' ? W - M : M, y); });
+  }
+  function par(a, b, tam, peso) {
+    tam = tam || 30; c.font = (peso || 600) + ' ' + tam + 'px ' + FB;
+    var wb = c.measureText(b).width, la = lineasTexto(c, a, CW - wb - 14);
+    la.forEach(function (l, i) { y += tam * 1.18; c.textAlign = 'left'; c.fillText(l, M, y); if (i === 0) { c.textAlign = 'right'; c.fillText(b, W - M, y); } });
+  }
+  function raya(gruesa) { y += 12; if (gruesa) c.fillRect(M, y, CW, 4); else for (var x = M; x < W - M; x += 16) c.fillRect(x, y, 9, 2); y += 6; }
+  function esp(v) { y += v; }
+  txt(n.nombre || 'SM BOUTIQUE', 64, 800, 'center', F);
+  if (n.documento) txt(n.documento, 28, 600, 'center');
+  if (n.direccion) txt(n.direccion, 28, 500, 'center');
+  if (n.ciudad || n.telefono) txt([n.ciudad, n.telefono ? 'Tel. ' + n.telefono : ''].filter(Boolean).join(' · '), 28, 500, 'center');
+  raya(true);
+  if (d.tipo === 'venta') {
+    txt('COMPROBANTE DE VENTA', 40, 800, 'center', F);
+    if (d.numero) txt('N° ' + d.numero, 40, 800, 'center', F);
+    txt(d.fecha || '', 28, 500, 'center');
+    if (d.empleado) txt('Atendió: ' + d.empleado, 28, 500, 'center');
+    var cl = d.cliente || {};
+    if (cl.nombre || cl.documento) { raya(); if (cl.nombre) txt('Cliente: ' + cl.nombre, 30, 700); if (cl.documento) txt('CC/NIT: ' + cl.documento, 30, 600); if (cl.telefono) txt('Cel: ' + cl.telefono, 30, 600); }
+    raya();
+    (d.items || []).forEach(function (i) {
+      txt(i.nombre + (i.talla ? ' · T ' + i.talla : ''), 30, 700);
+      par('  ' + i.cantidad + ' x ' + pesos(i.precio), pesos(i.cantidad * i.precio), 30, 500);
+      esp(4);
+    });
+    raya(true);
+    par('TOTAL', pesos(d.total), 52, 800);
+    esp(6);
+    if (d.abonos && d.abonos.length) {
+      txt('Pagado con abonos de apartado:', 28, 700);
+      d.abonos.forEach(function (a) { par(a.fecha.slice(0, 10) + ' ' + a.metodo, pesos(a.valor), 28, 500); });
+    } else {
+      par('Medio de pago', d.metodo, 30, 600);
+      if (d.metodo === 'Efectivo') { par('Recibido', pesos(d.recibido), 30, 500); par('Cambio', pesos(d.cambio), 30, 700); }
+    }
+    if (d.estado === 'Anulada') { esp(6); txt('*** VENTA ANULADA ***', 36, 800, 'center', F); }
+  } else {
+    var a = d.apartado;
+    txt('APARTADO N° ' + a.numero, 44, 800, 'center', F);
+    if (a.estado === 'Entregado') txt('PAGADO Y ENTREGADO', 36, 800, 'center', F);
+    else if (a.estado !== 'Pendiente') txt(a.estado.toUpperCase(), 30, 800, 'center', F);
+    txt('Fecha: ' + a.fecha, 28, 500, 'center');
+    raya();
+    txt('Cliente: ' + a.cliente.nombre, 30, 700);
+    if (a.cliente.documento) txt('CC: ' + a.cliente.documento, 30, 600);
+    if (a.cliente.telefono) txt('Cel: ' + a.cliente.telefono, 30, 600);
+    raya();
+    a.items.forEach(function (i) { txt(i.nombre + (i.talla ? ' · T ' + i.talla : ''), 30, 700); par('  ' + i.cantidad + ' x ' + pesos(i.precio), pesos(i.cantidad * i.precio), 30, 500); esp(4); });
+    raya(true);
+    par('TOTAL', pesos(a.total), 44, 800);
+    esp(4); txt('Abonos', 30, 700);
+    a.abonos.forEach(function (x) { par(x.fecha.slice(0, 10) + ' ' + x.metodo, pesos(x.valor), 28, 500); });
+    raya();
+    par('Abonado', pesos(a.abonado), 32, 700);
+    par('SALDO', pesos(a.saldo), 52, 800);
+    if (a.estado === 'Pendiente') { esp(6); txt('Reclamar antes de: ' + fechaCorta(a.limite), 32, 800, 'center'); txt('Presentar este comprobante.', 28, 500, 'center'); }
+    if (a.venta) txt('Venta N° ' + a.venta, 28, 600, 'center');
+  }
+  raya();
+  if (n.pie) txt(n.pie, 28, 600, 'center');
+  txt('Este comprobante no es factura electrónica.', 24, 500, 'center');
+  esp(10 * MM); // espacio para cortar el papel
+  var out = document.createElement('canvas'); out.width = W; out.height = Math.ceil(y);
+  out.getContext('2d').drawImage(cv, 0, 0);
+  return out;
+}
+function nombreComp(d) { return d.tipo === 'venta' ? 'Comprobante venta ' + (d.numero || 'ejemplo') + '.pdf' : 'Comprobante apartado ' + d.apartado.numero + '.pdf'; }
+function pdfComprobante(d) {
+  return fuentesListas().then(function () {
+    return Promise.all(['500', '600', '700', '800'].map(function (w) { return document.fonts ? document.fonts.load(w + ' 30px Barlow') : null; })).catch(function () {});
+  }).then(function () {
+    var cv = dibujarComprobante(d), hmm = cv.height / MM;
+    var doc = new jspdf.jsPDF({ orientation: hmm >= 50 ? 'portrait' : 'landscape', unit: 'mm', format: [50, hmm], compress: true });
+    doc.addImage(cv.toDataURL('image/png'), 'PNG', 0, 0, 50, hmm, 'comp', 'FAST');
+    return { blob: doc.output('blob'), canvas: cv };
+  });
+}
+function imprimirComprobante(d, ejemplo) {
+  pdfComprobante(d).then(function (r) {
+    S.compActual = { d: d, blob: r.blob };
+    $('modalCaja').innerHTML = '<h2>' + (ejemplo ? 'Comprobante de ejemplo' : 'Comprobante listo') + '</h2><p class="muted">Para rollo continuo de 50 mm. En FlashLabel elegir papel continuo de 50 mm.</p>' +
+      '<button class="btn" onclick="enviarComp(true)">Enviar a FlashLabel</button><button class="btn sec" onclick="enviarComp(false)">Descargar PDF</button>' +
+      '<div class="etq"><img alt="Vista previa del comprobante" style="width:100%;max-width:260px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25)" src="' + r.canvas.toDataURL('image/png') + '"></div>' +
+      '<button class="btn sec" onclick="cerrarModal()">Cerrar</button>';
+    $('modal').classList.remove('oculto');
+  });
+}
+function enviarComp(compartir) {
+  var c = S.compActual; if (!c) return;
+  var nombre = nombreComp(c.d), f = new File([c.blob], nombre, { type: 'application/pdf' });
+  if (compartir && navigator.canShare && navigator.canShare({ files: [f] })) return navigator.share({ files: [f], title: nombre }).catch(function () {});
+  var a = document.createElement('a'); a.href = URL.createObjectURL(c.blob); a.download = nombre;
+  document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  toast('PDF descargado. Abrirlo con FlashLabel e imprimir en rollo de 50 mm.');
 }
 
 arrancar();
